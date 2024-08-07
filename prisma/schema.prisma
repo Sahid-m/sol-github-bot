@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String     @id @default(uuid())
+  username    String     @unique
+  profileImg  String?
+  solWalletId String?    @unique
+  name        String?
+  bountyId    String?
+  sub         String     @unique
+  bounties    Bounties[]
+  solWallet   SolWallet?
+}
+
+model SolWallet {
+  id               String @id @default(uuid())
+  publicKey        String
+  privateKey       String
+  userid           String @unique
+  user             User   @relation(fields: [userid], references: [id])
+  CurrentBountyBal String @default("0")
+}
+
+model Bounties {
+  id           String        @id @default(uuid())
+  ownerId      String
+  issueNumber  String
+  githubRepo   String
+  owner        User          @relation(fields: [ownerId], references: [id])
+  contributors Contributor[]
+}
+
+model Contributor {
+  id           String   @id @default(uuid())
+  email        String
+  solPublicKey String
+  bountyId     String
+  bounty       Bounties @relation(fields: [bountyId], references: [id])
+}

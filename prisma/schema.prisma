@@ -32,15 +32,17 @@ model Bounties {
   id           String        @id @default(uuid())
   ownerId      String
   issueNumber  String
+  issueId      String
   githubRepo   String
   owner        User          @relation(fields: [ownerId], references: [id])
   contributors Contributor[]
 }
 
 model Contributor {
-  id           String   @id @default(uuid())
-  email        String
+  id           String    @id @default(uuid())
+  email        String?
+  sub          String    @unique
   solPublicKey String
-  bountyId     String
-  bounty       Bounties @relation(fields: [bountyId], references: [id])
+  bountyId     String?
+  bounty       Bounties? @relation(fields: [bountyId], references: [id])
 }

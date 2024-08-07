@@ -1,7 +1,12 @@
 import { Probot } from "probot";
 import db from "./db/index.js";
 import { getSolBalanaceInUSD } from "./lib/Solutils.js";
-import { extractAmount, IsBountyComment, IsTryComment } from "./lib/utils.js";
+import {
+  extractAmount,
+  extractSolPublicKey,
+  IsBountyComment,
+  IsTryComment,
+} from "./lib/utils.js";
 
 export default (app: Probot) => {
   app.on("issues.opened", async (context) => {
@@ -12,9 +17,19 @@ export default (app: Probot) => {
     await context.octokit.issues.createComment(issueComment);
   });
 
+  // app.on("pull_request.closed", async (context) => {});
+
+  app.on("pull_request", async (context) => {
+    const issueComment = context.issue({
+      body: "Thanks for Opening This PR make Sure You have issue number in Body ex. #3 and are already trying for bounty, If this is a bounty PR",
+    });
+    context.octokit.issues.createComment(issueComment);
+  });
+
   app.on("issue_comment.created", async (context) => {
     if (context.isBot) return;
     const commentBody = context.payload.comment.body.trim().toLocaleLowerCase();
+    console.log(commentBody);
 
     const commenter = context.payload.comment.user.login;
     const RepoOwner = context.payload.repository.owner.login;
@@ -69,62 +84,111 @@ export default (app: Probot) => {
         return;
       }
 
-      await db.solWallet.update({
+      await db.$transaction(async (prisma) => {
+        await prisma.solWallet.update({
+          where: {
+            id: userWallet.id,
+          },
+          data: {
+            CurrentBountyBal: (
+              parseFloat(userWallet.CurrentBountyBal) + parseFloat(bountyAmount)
+            ).toString(),
+          },
+        });
+
+        await prisma.bounties.create({
+          data: {
+            githubRepo: context.payload.repository.id.toString(),
+            issueId: context.payload.issue.id.toString(),
+            ownerId: user.id,
+            issueNumber: context.payload.issue.number.toString(),
+          },
+        });
+      });
+
+      const issueComment = context.issue({
+        body: `Bounty Created!`,
+      });
+      await context.octokit.issues.createComment(issueComment);
+      return;
+    } else if (IsTryComment(commentBody)) {
+      console.log(commentBody);
+
+      const sol_publicKey = extractSolPublicKey(context.payload.comment.body);
+
+      console.log(sol_publicKey);
+
+      if (!sol_publicKey) {
+        const issueComment = context.issue({
+          body: `Please also send your solana address as well! ex. /try solana_public_key`,
+        });
+        await context.octokit.issues.createComment(issueComment);
+        return;
+      }
+
+      const bounty = await db.bounties.findFirst({
         where: {
-          id: userWallet.id,
-        },
-        data: {
-          CurrentBountyBal: (
-            parseFloat(userWallet.CurrentBountyBal) + parseFloat(bountyAmount)
-          ).toString(),
+          issueId: context.payload.issue.id.toString(),
         },
       });
+
+      if (!bounty) {
+        const issueComment = context.issue({
+          body: `There is no bounty set on this issue!`,
+        });
+        await context.octokit.issues.createComment(issueComment);
+        return;
+      }
+
+      const contributor = await db.contributor.findFirst({
+        where: {
+          sub: context.payload.sender.id.toString(),
+        },
+      });
+
+      // Check if contributor exists
+      if (contributor) {
+        // Check if contributor is already assigned to a bounty
+        if (contributor.bountyId) {
+          const issueComment = context.issue({
+            body: `You are already trying an bounty! Please Finish it or untry by commenting /untry at issue!`,
+          });
+          await context.octokit.issues.createComment(issueComment);
+          return;
+        } else {
+          await db.contributor.update({
+            where: {
+              sub: contributor.sub,
+            },
+            data: {
+              bountyId: bounty.id,
+              solPublicKey: sol_publicKey,
+            },
+          });
+
+          const issueComment = context.issue({
+            body: `Thanks For trying this bounty! Please Go ahead and file a pr with issue number when you're done to claim the bounty! `,
+          });
+          await context.octokit.issues.createComment(issueComment);
+          return;
+        }
+      }
+
+      await db.contributor.create({
+        data: {
+          solPublicKey: sol_publicKey,
+          sub: context.payload.sender.id.toString(),
+          email: context.payload.sender.email,
+          bountyId: bounty.id,
+        },
+      });
+
+      const issueComment = context.issue({
+        body: `Thanks For trying this bounty! Please Go ahead and file a pr with issue number when you're done to claim the bounty! `,
+      });
+      await context.octokit.issues.createComment(issueComment);
+      return;
     }
-
-    // if (commenter === RepoOwner) {
-    //   if (IsTryComment(commentBody)) {
-    //     const issueComment = context.issue({
-    //       body: `You can't join your bounty, bozzo!`,
-    //     });
-    //     await context.octokit.issues.createComment(issueComment);
-    //     return;
-    //   }
-    //   if (!IsBountyComment(commentBody)) return;
-
-    //   const amount = extractAmount(commentBody)?.replace("$", "");
-
-    //   if (!amount) {
-    //     const issueComment = context.issue({
-    //       body: `Please send a valid bounty amount @${context.payload.sender.login}. Example command to send bounty: "/bounty $300", this will send $300 to contributor. `,
-    //     });
-    //     await context.octokit.issues.createComment(issueComment);
-    //     return;
-    //   }
-
-    //   const issueComment = context.issue({
-    //     body: `Your Bounty for ${amount} is Set on this Issue! `,
-    //   });
-    //   await context.octokit.issues.createComment(issueComment);
-    //   return;
-    // } else {
-    //   if (!IsTryComment(commentBody)) return;
-
-    //   const sol_publicKey = extractSolPublicKey(commentBody);
-
-    //   if (!sol_publicKey) {
-    //     const comment = context.issue({
-    //       body: "Please also give your solana public address which will be used to send solana to",
-    //     });
-    //     await context.octokit.issues.createComment(comment);
-    //     return;
-    //   }
-
-    //   const comment = context.issue({
-    //     body: "You have joined the bounty! Please File a PR when you're done with the issue number",
-    //   });
-    //   await context.octokit.issues.createComment(comment);
-    //   return;
-    // }
   });
   // For more information on building apps:
   // https://probot.github.io/docs/

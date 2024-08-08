@@ -3,9 +3,10 @@ import db from "./db/index.js";
 import { getSolBalanaceInUSD } from "./lib/Solutils.js";
 import {
   extractAmount,
+  extractClaimNumber,
   extractSolPublicKey,
+  IsAttemptComment,
   IsBountyComment,
-  IsTryComment,
 } from "./lib/utils.js";
 
 export default (app: Probot) => {
@@ -20,32 +21,93 @@ export default (app: Probot) => {
   app.on("pull_request.closed", async (context) => {
     const prBody = context.payload.pull_request.body;
     const merged = context.payload.pull_request.merged;
-    const issueUrl = context.payload.pull_request.issue_url
+    const issueUrl = context.payload.pull_request.issue_url;
 
     if (prBody == null || !merged || !issueUrl) {
       return;
     }
 
-    const Pr_user = context.payload.pull_request.user.id
+    const issueNo = extractClaimNumber(prBody);
+
+    if (!issueNo) {
+      return;
+    }
+
+    const Pr_user = context.payload.pull_request.user.id;
 
     const BountyIssue = await db.bounties.findFirst({
       where: {
-          issueNumber: 
+        issueNumber: issueNo,
       },
-    }) 
+      include: {
+        contributors: true,
+        owner: true,
+      },
+    });
+
+    if (!BountyIssue) return;
+
+    let contributorSolAddress = null;
+    let contributorName = null;
+
+    BountyIssue.contributors.map((contributor) => {
+      if (contributor.sub === Pr_user.toString()) {
+        contributorSolAddress = contributor.solPublicKey;
+        contributorName = contributor.name;
+      }
+    });
+
+    if (!contributorSolAddress) {
+      return;
+    }
+
+    const comment = context.issue({
+      issue_number: parseInt(issueNo),
+      body: `Thanks to @${contributorName} for winning this bounty! This Bounty will now be closed!`,
+    });
+
+    await context.octokit.issues.createComment(comment);
+
+    await db.bounties.update({
+      where: {
+        id: BountyIssue.id,
+      },
+      data: {
+        completed: true,
+      },
+    });
   });
 
   app.on("pull_request", async (context) => {
+    const prBody = context.payload.pull_request.body;
+
+    if (!prBody) {
+      const issueComment = context.issue({
+        body: "Thanks for Opening This PR make Sure You have issue number in Body ex. `#3` and are already trying for bounty, If this is a bounty PR",
+      });
+      context.octokit.issues.createComment(issueComment);
+      return;
+    }
+    const issueNo = extractClaimNumber(prBody);
+
+    if (!issueNo) {
+      const issueComment = context.issue({
+        body: "Thanks for Opening This PR make Sure You have issue number in Body ex. `#3` and are already trying for bounty, If this is a bounty PR",
+      });
+      context.octokit.issues.createComment(issueComment);
+      return;
+    }
+
     const issueComment = context.issue({
-      body: "Thanks for Opening This PR make Sure You have issue number in Body ex. `#3` and are already trying for bounty, If this is a bounty PR",
+      body: `Thanks for Opening This PR For Issue no: ${issueNo}! If this PR gets merged the user will get the bounty alloted to this isse!`,
     });
     context.octokit.issues.createComment(issueComment);
+    return;
   });
 
   app.on("issue_comment.created", async (context) => {
     if (context.isBot) return;
     const commentBody = context.payload.comment.body.trim().toLocaleLowerCase();
-    console.log(commentBody);
 
     const commenter = context.payload.comment.user.login;
     const RepoOwner = context.payload.repository.owner.login;
@@ -65,7 +127,7 @@ export default (app: Probot) => {
       return;
     }
 
-    if (IsTryComment(commentBody) && commenter === RepoOwner) {
+    if (IsAttemptComment(commentBody) && commenter === RepoOwner) {
       const issueComment = context.issue({
         body: `You Can't Join Your Own Bounty!`,
       });
@@ -171,7 +233,7 @@ export default (app: Probot) => {
       });
       await context.octokit.issues.createComment(issueComment);
       return;
-    } else if (IsTryComment(commentBody)) {
+    } else if (IsAttemptComment(commentBody)) {
       console.log(commentBody);
 
       const sol_publicKey = extractSolPublicKey(context.payload.comment.body);
@@ -240,6 +302,7 @@ export default (app: Probot) => {
           sub: context.payload.sender.id.toString(),
           email: context.payload.sender.email,
           bountyId: bounty.id,
+          name: context.payload.sender.login,
         },
       });
 

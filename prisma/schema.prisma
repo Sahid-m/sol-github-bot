@@ -42,6 +42,7 @@ model Bounties {
 
 model Contributor {
   id           String    @id @default(uuid())
+  name         String
   email        String?
   sub          String    @unique
   solPublicKey String

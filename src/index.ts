@@ -17,11 +17,27 @@ export default (app: Probot) => {
     await context.octokit.issues.createComment(issueComment);
   });
 
-  // app.on("pull_request.closed", async (context) => {});
+  app.on("pull_request.closed", async (context) => {
+    const prBody = context.payload.pull_request.body;
+    const merged = context.payload.pull_request.merged;
+    const issueUrl = context.payload.pull_request.issue_url
+
+    if (prBody == null || !merged || !issueUrl) {
+      return;
+    }
+
+    const Pr_user = context.payload.pull_request.user.id
+
+    const BountyIssue = await db.bounties.findFirst({
+      where: {
+          issueNumber: 
+      },
+    }) 
+  });
 
   app.on("pull_request", async (context) => {
     const issueComment = context.issue({
-      body: "Thanks for Opening This PR make Sure You have issue number in Body ex. #3 and are already trying for bounty, If this is a bounty PR",
+      body: "Thanks for Opening This PR make Sure You have issue number in Body ex. `#3` and are already trying for bounty, If this is a bounty PR",
     });
     context.octokit.issues.createComment(issueComment);
   });
@@ -67,12 +83,54 @@ export default (app: Probot) => {
         await context.octokit.issues.createComment(issueComment);
         return;
       }
+
+      const BountyExists = await db.bounties.findFirst({
+        where: {
+          issueId: context.payload.issue.id.toString(),
+        },
+      });
+
       const userWallet = await db.solWallet.findFirst({
         where: {
           userid: user.id,
         },
       });
       if (!userWallet) return;
+
+      if (BountyExists) {
+        const previousBountyAmount = parseFloat(BountyExists.bountyAmount);
+        const newBountyAmount = parseFloat(bountyAmount);
+        const currentWalletBalance = parseFloat(userWallet.CurrentBountyBal);
+
+        // prettier-ignore
+        const updatedWalletBalance =
+          (currentWalletBalance - previousBountyAmount) + newBountyAmount;
+        // Execute the updates in a transaction
+        await db.$transaction([
+          db.bounties.update({
+            data: {
+              bountyAmount: bountyAmount, // Store the updated bounty amount
+            },
+            where: {
+              id: BountyExists.id,
+            },
+          }),
+          db.solWallet.update({
+            data: {
+              CurrentBountyBal: updatedWalletBalance.toString(), // Update the wallet balance
+            },
+            where: {
+              id: userWallet.id,
+            },
+          }),
+        ]);
+
+        const issueComment = context.issue({
+          body: `Bounty Balance Updated!`,
+        });
+        await context.octokit.issues.createComment(issueComment);
+        return;
+      }
 
       const userBalInUSD = await getSolBalanaceInUSD(userWallet.publicKey);
 
@@ -100,7 +158,9 @@ export default (app: Probot) => {
           data: {
             githubRepo: context.payload.repository.id.toString(),
             issueId: context.payload.issue.id.toString(),
+            bountyAmount: bountyAmount,
             ownerId: user.id,
+            completed: false,
             issueNumber: context.payload.issue.number.toString(),
           },
         });

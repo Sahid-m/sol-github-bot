@@ -41,11 +41,12 @@ model Bounties {
 }
 
 model Contributor {
-  id           String    @id @default(uuid())
-  name         String
-  email        String?
-  sub          String    @unique
-  solPublicKey String
-  bountyId     String?
-  bounty       Bounties? @relation(fields: [bountyId], references: [id])
+  id             String    @id @default(uuid())
+  name           String
+  email          String?
+  sub            String    @unique
+  totalBountyWon String    @default("0")
+  solPublicKey   String
+  bountyId       String?
+  bounty         Bounties? @relation(fields: [bountyId], references: [id])
 }

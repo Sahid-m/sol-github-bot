@@ -1,6 +1,6 @@
 import { Probot } from "probot";
 import db from "./db/index.js";
-import { getSolBalanaceInUSD } from "./lib/Solutils.js";
+import { getSolBalanaceInUSD, sendSolToPublicKey } from "./lib/Solutils.js";
 import {
   extractAmount,
   extractClaimNumber,
@@ -21,9 +21,8 @@ export default (app: Probot) => {
   app.on("pull_request.closed", async (context) => {
     const prBody = context.payload.pull_request.body;
     const merged = context.payload.pull_request.merged;
-    const issueUrl = context.payload.pull_request.issue_url;
 
-    if (prBody == null || !merged || !issueUrl) {
+    if (prBody == null || !merged) {
       return;
     }
 
@@ -45,25 +44,58 @@ export default (app: Probot) => {
       },
     });
 
+    console.log("Found Bountie issue : " + BountyIssue?.id);
+
     if (!BountyIssue) return;
 
     let contributorSolAddress = null;
     let contributorName = null;
+    let contributorId;
+    let contributorBountyWon;
 
     BountyIssue.contributors.map((contributor) => {
       if (contributor.sub === Pr_user.toString()) {
         contributorSolAddress = contributor.solPublicKey;
         contributorName = contributor.name;
+        contributorId = contributor.id;
+        contributorBountyWon = contributor.totalBountyWon;
       }
     });
 
-    if (!contributorSolAddress) {
+    console.log(
+      "contributors details : " +
+        contributorBountyWon +
+        contributorId +
+        contributorSolAddress
+    );
+
+    if (!contributorSolAddress || !contributorId || !contributorBountyWon) {
       return;
     }
 
+    const userWallet = await db.solWallet.findFirst({
+      where: {
+        userid: BountyIssue.ownerId,
+      },
+    });
+
+    console.log("user: " + userWallet?.id);
+
+    if (!userWallet) return;
+
+    console.log("Before Transaction");
+
+    const transactionDetails = await sendSolToPublicKey(
+      userWallet.privateKey,
+      contributorSolAddress,
+      parseFloat(BountyIssue.bountyAmount)
+    );
+
+    console.log("After Transaction");
+
     const comment = context.issue({
       issue_number: parseInt(issueNo),
-      body: `Thanks to @${contributorName} for winning this bounty! This Bounty will now be closed!`,
+      body: `Thanks to @${contributorName} for winning this bounty of $${BountyIssue.bountyAmount}. Here is the transaction hash: https://explorer.solana.com/tx/${transactionDetails}!`,
     });
 
     await context.octokit.issues.createComment(comment);
@@ -74,12 +106,41 @@ export default (app: Probot) => {
       },
       data: {
         completed: true,
+        owner: {
+          update: {
+            solWallet: {
+              update: {
+                CurrentBountyBal: (
+                  parseFloat(userWallet.CurrentBountyBal) -
+                  parseFloat(BountyIssue.bountyAmount)
+                ).toString(),
+              },
+            },
+          },
+        },
+        contributors: {
+          update: {
+            where: {
+              id: contributorId,
+            },
+            data: {
+              totalBountyWon: (
+                parseFloat(BountyIssue.bountyAmount) +
+                parseFloat(contributorBountyWon)
+              ).toString(),
+            },
+          },
+        },
       },
     });
   });
 
   app.on("pull_request", async (context) => {
     const prBody = context.payload.pull_request.body;
+
+    if (context.payload.action === "closed") {
+      return;
+    }
 
     if (!prBody) {
       const issueComment = context.issue({

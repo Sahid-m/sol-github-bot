@@ -10,28 +10,23 @@ import {
 } from "./lib/utils.js";
 
 export default (app: Probot) => {
-  app.on("issues.opened", async (context) => {
-    app.log.info(context);
-    const issueComment = context.issue({
-      body: "Thanks for opening this issue!",
-    });
-    await context.octokit.issues.createComment(issueComment);
-  });
-
   app.on("pull_request.closed", async (context) => {
     const prBody = context.payload.pull_request.body;
     const merged = context.payload.pull_request.merged;
 
+    // check if PR is merged!
     if (prBody == null || !merged) {
       return;
     }
 
+    // extracts issue Number
     const issueNo = extractClaimNumber(prBody);
 
     if (!issueNo) {
       return;
     }
 
+    // gets user that filed PR
     const Pr_user = context.payload.pull_request.user.id;
 
     const BountyIssue = await db.bounties.findFirst({
@@ -44,8 +39,7 @@ export default (app: Probot) => {
       },
     });
 
-    console.log("Found Bountie issue : " + BountyIssue?.id);
-
+    // return if that issue has no bounty
     if (!BountyIssue) return;
 
     let contributorSolAddress = null;
@@ -62,17 +56,12 @@ export default (app: Probot) => {
       }
     });
 
-    console.log(
-      "contributors details : " +
-        contributorBountyWon +
-        contributorId +
-        contributorSolAddress
-    );
-
+    // check if the contributor has things
     if (!contributorSolAddress || !contributorId || !contributorBountyWon) {
       return;
     }
 
+    // gets user wallet for sending sol
     const userWallet = await db.solWallet.findFirst({
       where: {
         userid: BountyIssue.ownerId,
@@ -83,29 +72,29 @@ export default (app: Probot) => {
 
     if (!userWallet) return;
 
-    console.log("Before Transaction");
-
+    // Actual Function to send sol
     const transactionDetails = await sendSolToPublicKey(
       userWallet.privateKey,
       contributorSolAddress,
       parseFloat(BountyIssue.bountyAmount)
     );
 
-    console.log("After Transaction");
-
+    // comment to notify user with tx details
     const comment = context.issue({
       issue_number: parseInt(issueNo),
-      body: `Thanks to @${contributorName} for winning this bounty of $${BountyIssue.bountyAmount}. Here is the transaction hash: https://explorer.solana.com/tx/${transactionDetails}!`,
+      body: `Thanks to @${contributorName} for winning this bounty of $${BountyIssue.bountyAmount}. Here is the transaction hash: \n [${transactionDetails}](https://explorer.solana.com/tx/${transactionDetails})!`,
     });
 
     await context.octokit.issues.createComment(comment);
 
+    // update bounty and user details
     await db.bounties.update({
       where: {
         id: BountyIssue.id,
       },
       data: {
         completed: true,
+        winnerId: contributorId,
         owner: {
           update: {
             solWallet: {
@@ -128,6 +117,9 @@ export default (app: Probot) => {
                 parseFloat(BountyIssue.bountyAmount) +
                 parseFloat(contributorBountyWon)
               ).toString(),
+              bountiesWonId: {
+                push: BountyIssue.id,
+              },
             },
           },
         },
@@ -144,7 +136,7 @@ export default (app: Probot) => {
 
     if (!prBody) {
       const issueComment = context.issue({
-        body: "Thanks for Opening This PR make Sure You have issue number in Body ex. `#3` and are already trying for bounty, If this is a bounty PR",
+        body: "Thanks for Opening This PR make Sure You have issue number in Body ex. **#3** and are already trying for bounty, If this is a bounty PR",
       });
       context.octokit.issues.createComment(issueComment);
       return;
@@ -153,14 +145,14 @@ export default (app: Probot) => {
 
     if (!issueNo) {
       const issueComment = context.issue({
-        body: "Thanks for Opening This PR make Sure You have issue number in Body ex. `#3` and are already trying for bounty, If this is a bounty PR",
+        body: "Thanks for Opening This PR make Sure You have issue number in Body ex. **#3** and are already trying for bounty, If this is a bounty PR",
       });
       context.octokit.issues.createComment(issueComment);
       return;
     }
 
     const issueComment = context.issue({
-      body: `Thanks for Opening This PR For Issue no: ${issueNo}! If this PR gets merged the user will get the bounty alloted to this isse!`,
+      body: `Thanks for Opening This PR For Issue no: #${issueNo}! If this PR gets merged the user will get the bounty alloted to this isse!`,
     });
     context.octokit.issues.createComment(issueComment);
     return;
@@ -201,7 +193,7 @@ export default (app: Probot) => {
 
       if (!bountyAmount) {
         const issueComment = context.issue({
-          body: `Please Give Bounty Amount. Ex. /bounty $10`,
+          body: `Please Give Bounty Amount. Ex. **/bounty $10**`,
         });
         await context.octokit.issues.createComment(issueComment);
         return;
@@ -290,7 +282,7 @@ export default (app: Probot) => {
       });
 
       const issueComment = context.issue({
-        body: `Bounty Created!`,
+        body: `Bounty Created! \n  To try this bounty, please comment **/attempt sol_public_address**`,
       });
       await context.octokit.issues.createComment(issueComment);
       return;
@@ -303,7 +295,7 @@ export default (app: Probot) => {
 
       if (!sol_publicKey) {
         const issueComment = context.issue({
-          body: `Please also send your solana address as well! ex. /try solana_public_key`,
+          body: `Please also send your solana address as well! ex. **/attempt solana_public_key**`,
         });
         await context.octokit.issues.createComment(issueComment);
         return;
@@ -331,44 +323,37 @@ export default (app: Probot) => {
 
       // Check if contributor exists
       if (contributor) {
-        // Check if contributor is already assigned to a bounty
-        if (contributor.bountyId) {
-          const issueComment = context.issue({
-            body: `You are already trying an bounty! Please Finish it or untry by commenting /untry at issue!`,
-          });
-          await context.octokit.issues.createComment(issueComment);
-          return;
-        } else {
-          await db.contributor.update({
-            where: {
-              sub: contributor.sub,
+        await db.contributor.update({
+          where: {
+            sub: contributor.sub,
+          },
+          data: {
+            solPublicKey: sol_publicKey,
+            bounties: {
+              connect: {
+                id: bounty.id,
+              },
             },
-            data: {
-              bountyId: bounty.id,
-              solPublicKey: sol_publicKey,
+          },
+        });
+      } else {
+        await db.contributor.create({
+          data: {
+            solPublicKey: sol_publicKey,
+            sub: context.payload.sender.id.toString(),
+            email: context.payload.sender.email,
+            name: context.payload.sender.login,
+            bounties: {
+              connect: {
+                id: bounty.id,
+              },
             },
-          });
-
-          const issueComment = context.issue({
-            body: `Thanks For trying this bounty! Please Go ahead and file a pr with issue number when you're done to claim the bounty! `,
-          });
-          await context.octokit.issues.createComment(issueComment);
-          return;
-        }
+          },
+        });
       }
 
-      await db.contributor.create({
-        data: {
-          solPublicKey: sol_publicKey,
-          sub: context.payload.sender.id.toString(),
-          email: context.payload.sender.email,
-          bountyId: bounty.id,
-          name: context.payload.sender.login,
-        },
-      });
-
       const issueComment = context.issue({
-        body: `Thanks For trying this bounty! Please Go ahead and file a pr with issue number when you're done to claim the bounty! `,
+        body: `Thanks For trying this bounty! \n  Please Go ahead and file a pr with issue number in your Pr body when you're done to claim the bounty! \n ex: **/claim #${context.payload.issue.number}**`,
       });
       await context.octokit.issues.createComment(issueComment);
       return;

@@ -82,7 +82,7 @@ export default (app: Probot) => {
     // comment to notify user with tx details
     const comment = context.issue({
       issue_number: parseInt(issueNo),
-      body: `Thanks to @${contributorName} for winning this bounty of $${BountyIssue.bountyAmount}. Here is the transaction hash: \n [${transactionDetails}](https://explorer.solana.com/tx/${transactionDetails})!`,
+      body: `Thanks to @${contributorName} for winning this bounty of $${BountyIssue.bountyAmount}. Here is the transaction hash: \n [${transactionDetails}](https://explorer.solana.com/tx/${transactionDetails}?cluster=devnet)!`,
     });
 
     await context.octokit.issues.createComment(comment);
@@ -210,7 +210,13 @@ export default (app: Probot) => {
           userid: user.id,
         },
       });
-      if (!userWallet) return;
+      if (!userWallet) {
+        const issueComment = context.issue({
+          body: `Make Sure You've registered at livelink.com! You dont have any wallet there`,
+        });
+        await context.octokit.issues.createComment(issueComment);
+        return;
+      }
 
       if (BountyExists) {
         const previousBountyAmount = parseFloat(BountyExists.bountyAmount);
@@ -276,6 +282,7 @@ export default (app: Probot) => {
             bountyAmount: bountyAmount,
             ownerId: user.id,
             completed: false,
+            issueName: context.payload.issue.title,
             issueNumber: context.payload.issue.number.toString(),
           },
         });
@@ -285,6 +292,14 @@ export default (app: Probot) => {
         body: `Bounty Created! \n  To try this bounty, please comment **/attempt sol_public_address**`,
       });
       await context.octokit.issues.createComment(issueComment);
+
+      const label = `bounty $${bountyAmount}`;
+
+      await context.octokit.issues.addLabels(
+        context.issue({
+          labels: [label],
+        })
+      );
       return;
     } else if (IsAttemptComment(commentBody)) {
       console.log(commentBody);

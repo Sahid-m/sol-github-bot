@@ -31,6 +31,7 @@ model SolWallet {
 model Bounties {
   id           String        @id @default(uuid())
   bountyAmount String
+  issueName    String?
   ownerId      String
   issueNumber  String
   issueId      String

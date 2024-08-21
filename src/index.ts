@@ -284,6 +284,10 @@ export default (app: Probot) => {
             completed: false,
             issueName: context.payload.issue.title,
             issueNumber: context.payload.issue.number.toString(),
+            issueLink: context.payload.issue.html_url,
+            githubRepoName: context.payload.repository.name,
+            issueDescription: context.payload.issue.body || "",
+            issueProgrammingLang: context.payload.repository.language,
           },
         });
       });

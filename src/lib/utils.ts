@@ -6,6 +6,10 @@ export const IsAttemptComment = (commentBody: string) => {
   return commentBody.startsWith("/attempt");
 };
 
+export const isRemoveComment = (commentBody: string) => {
+  return commentBody.startsWith("/remove");
+};
+
 export const extractAmount = (comment: string) => {
   const bountyExtractor = /\/bounty\s+(\$?\d+|\d+\$)/;
 

@@ -7,6 +7,7 @@ import {
   extractSolPublicKey,
   IsAttemptComment,
   IsBountyComment,
+  isRemoveComment,
 } from "./lib/utils.js";
 
 export default (app: Probot) => {
@@ -67,8 +68,6 @@ export default (app: Probot) => {
         userid: BountyIssue.ownerId,
       },
     });
-
-    console.log("user: " + userWallet?.id);
 
     if (!userWallet) return;
 
@@ -180,9 +179,17 @@ export default (app: Probot) => {
       return;
     }
 
+    if (isRemoveComment(commentBody) && commenter != RepoOwner) {
+      const issueComment = context.issue({
+        body: `You Are Not Authorised to remove a bounty!`,
+      });
+      await context.octokit.issues.createComment(issueComment);
+      return;
+    }
+
     if (IsAttemptComment(commentBody) && commenter === RepoOwner) {
       const issueComment = context.issue({
-        body: `You Can't Join Your Own Bounty!`,
+        body: `You Can't Attempt Your Own Bounty!`,
       });
       await context.octokit.issues.createComment(issueComment);
       return;
@@ -212,7 +219,7 @@ export default (app: Probot) => {
       });
       if (!userWallet) {
         const issueComment = context.issue({
-          body: `Make Sure You've registered at livelink.com! You dont have any wallet there`,
+          body: `Make Sure You've registered at [GitSol](https://git-sol-bot.vercel.app/)! You dont have any wallet there`,
         });
         await context.octokit.issues.createComment(issueComment);
         return;
@@ -257,7 +264,7 @@ export default (app: Probot) => {
 
       if (userBalInUSD <= parseFloat(bountyAmount)) {
         const issueComment = context.issue({
-          body: `You Don't have enough bounty in your wallet! Please Transfer some solana before giving bounty at https://live-link/wallet.`,
+          body: `You Don't have enough bounty in your wallet! Please Transfer some solana before giving bounty at [GitSol](https://git-sol-bot.vercel.app/userwallet).`,
         });
         await context.octokit.issues.createComment(issueComment);
         return;
@@ -293,7 +300,11 @@ export default (app: Probot) => {
       });
 
       const issueComment = context.issue({
-        body: `Bounty Created! \n  To try this bounty, please comment **/attempt sol_public_address**`,
+        body: `Bounty Created! \n  ### Steps to solve:
+1. **Start working**: Comment \`/attempt your_sol_address\` with your implementation plan
+2. **Submit work**: Create a pull request including \`/claim #${context.payload.issue.number}\` in the PR body to claim the bounty
+3. **Receive payment**: 100% of the bounty is received instantly to your solana wallet
+4. **Thank you for contributing to [${context.payload.sender.login}/${context.payload.repository.name}](${context.payload.repository.html_url})!** \n `,
       });
       await context.octokit.issues.createComment(issueComment);
 
@@ -323,6 +334,7 @@ export default (app: Probot) => {
       const bounty = await db.bounties.findFirst({
         where: {
           issueId: context.payload.issue.id.toString(),
+          completed: false,
         },
       });
 
@@ -373,6 +385,47 @@ export default (app: Probot) => {
 
       const issueComment = context.issue({
         body: `Thanks For trying this bounty! \n  Please Go ahead and file a pr with issue number in your Pr body when you're done to claim the bounty! \n ex: **/claim #${context.payload.issue.number}**`,
+      });
+      await context.octokit.issues.createComment(issueComment);
+      return;
+    } else if (isRemoveComment(commentBody)) {
+      const bounty = await db.bounties.findFirst({
+        where: {
+          issueId: context.payload.issue.id.toString(),
+        },
+      });
+
+      if (!bounty || bounty.issueNumber || bounty.issueDescription) {
+        const issueComment = context.issue({
+          body: `There is no bounty found on this issue!`,
+        });
+        await context.octokit.issues.createComment(issueComment);
+        return;
+      }
+
+      if (bounty.completed) {
+        const issueComment = context.issue({
+          body: `This bounty is already completed!`,
+        });
+        await context.octokit.issues.createComment(issueComment);
+        return;
+      }
+
+      await context.octokit.issues.removeLabel({
+        issue_number: parseInt(bounty.issueNumber),
+        name: `bounty $${bounty.bountyAmount}`,
+        owner: context.payload.repository.owner.login,
+        repo: context.payload.repository.name,
+      });
+
+      await db.bounties.delete({
+        where: {
+          id: bounty.id,
+        },
+      });
+
+      const issueComment = context.issue({
+        body: `Successfully Removed the Bounty!`,
       });
       await context.octokit.issues.createComment(issueComment);
       return;

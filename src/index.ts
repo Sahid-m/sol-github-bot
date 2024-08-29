@@ -1,3 +1,4 @@
+import { Keypair } from "@solana/web3.js";
 import { Probot } from "probot";
 import db from "./db/index.js";
 import { getSolBalanaceInUSD, sendSolToPublicKey } from "./lib/Solutils.js";
@@ -5,6 +6,7 @@ import {
   extractAmount,
   extractClaimNumber,
   extractSolPublicKey,
+  generateToken,
   IsAttemptComment,
   IsBountyComment,
   isRemoveComment,
@@ -78,13 +80,38 @@ export default (app: Probot) => {
       parseFloat(BountyIssue.bountyAmount)
     );
 
-    // comment to notify user with tx details
-    const comment = context.issue({
-      issue_number: parseInt(issueNo),
-      body: `Thanks to @${contributorName} for winning this bounty of $${BountyIssue.bountyAmount}. Here is the transaction hash: \n [${transactionDetails}](https://explorer.solana.com/tx/${transactionDetails}?cluster=devnet)!`,
-    });
+    if (!transactionDetails) {
+      const transactionDetails2 = await sendSolToPublicKey(
+        userWallet.privateKey,
+        contributorSolAddress,
+        parseFloat(BountyIssue.bountyAmount)
+      );
 
-    await context.octokit.issues.createComment(comment);
+      if (!transactionDetails2) {
+        const comment = context.issue({
+          issue_number: parseInt(issueNo),
+          body: `Some Error in doing transaction! @${context.payload.repository.owner.login}, @${contributorName} has been transfered bounty of ${BountyIssue.bountyAmount}.`,
+        });
+
+        await context.octokit.issues.createComment(comment);
+        return;
+      } else {
+        const comment = context.issue({
+          issue_number: parseInt(issueNo),
+          body: `Thanks to @${contributorName} for winning this bounty of $${BountyIssue.bountyAmount}. Here is the transaction hash: \n [${transactionDetails2}](https://explorer.solana.com/tx/${transactionDetails2}?cluster=devnet)!`,
+        });
+
+        await context.octokit.issues.createComment(comment);
+      }
+    } else {
+      const comment = context.issue({
+        issue_number: parseInt(issueNo),
+        body: `Thanks to @${contributorName} for winning this bounty of $${BountyIssue.bountyAmount}. Here is the transaction hash: \n [${transactionDetails}](https://explorer.solana.com/tx/${transactionDetails}?cluster=devnet)!`,
+      });
+      await context.octokit.issues.createComment(comment);
+    }
+
+    // comment to notify user with tx details
 
     // update bounty and user details
     await db.bounties.update({
@@ -159,6 +186,7 @@ export default (app: Probot) => {
 
   app.on("issue_comment.created", async (context) => {
     if (context.isBot) return;
+
     const commentBody = context.payload.comment.body.trim().toLocaleLowerCase();
 
     const commenter = context.payload.comment.user.login;
@@ -166,6 +194,9 @@ export default (app: Probot) => {
     const user = await db.user.findFirst({
       where: {
         sub: context.payload.repository.owner.id.toString(),
+      },
+      include: {
+        solWallet: true,
       },
     });
 
@@ -177,6 +208,43 @@ export default (app: Probot) => {
       });
       await context.octokit.issues.createComment(issueComment);
       return;
+    }
+
+    // check if the comment is on a pr
+    if (context.payload.issue.pull_request) {
+      // check for '/bounty ';
+      if (IsBountyComment(commentBody)) {
+        const bountyAmount = extractAmount(commentBody)?.replace("$", "");
+        if (!bountyAmount || !user.solWallet) return;
+        const generatedToken = generateToken();
+
+        const tempWallet = Keypair.generate();
+        await sendSolToPublicKey(
+          user.solWallet.privateKey,
+          tempWallet.publicKey.toBase58(),
+          parseFloat(bountyAmount)
+        );
+
+        const claimLink = `https://localhost:3000/claim/bounty?token=${generatedToken}`;
+
+        await db.prBounties.create({
+          data: {
+            bountyAmount: bountyAmount,
+            prLink: context.payload.issue.html_url,
+            prNumber: context.payload.issue.number.toString(),
+            token: generatedToken,
+            winnerSub: context.payload.issue.user.id.toString(),
+            ownerId: user.id,
+            walletPrivateKey: tempWallet.secretKey.toString(),
+          },
+        });
+
+        const issueComment = context.issue({
+          body: `Congratulations to @${context.payload.issue.user.login} For Winning Bounty of $${bountyAmount}! \n Claim Your Bounty By Logging in with same github at [GitSol](${claimLink})  `,
+        });
+        await context.octokit.issues.createComment(issueComment);
+        return;
+      }
     }
 
     if (isRemoveComment(commentBody) && commenter != RepoOwner) {
@@ -212,11 +280,7 @@ export default (app: Probot) => {
         },
       });
 
-      const userWallet = await db.solWallet.findFirst({
-        where: {
-          userid: user.id,
-        },
-      });
+      const userWallet = user.solWallet;
       if (!userWallet) {
         const issueComment = context.issue({
           body: `Make Sure You've registered at [GitSol](https://git-sol-bot.vercel.app/)! You dont have any wallet there`,
@@ -374,6 +438,7 @@ export default (app: Probot) => {
             sub: context.payload.sender.id.toString(),
             email: context.payload.sender.email,
             name: context.payload.sender.login,
+            profileImg: context.payload.sender.avatar_url,
             bounties: {
               connect: {
                 id: bounty.id,
@@ -395,7 +460,7 @@ export default (app: Probot) => {
         },
       });
 
-      if (!bounty || bounty.issueNumber || bounty.issueDescription) {
+      if (!bounty || !bounty.issueNumber || !bounty.issueDescription) {
         const issueComment = context.issue({
           body: `There is no bounty found on this issue!`,
         });

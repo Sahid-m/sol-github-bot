@@ -54,9 +54,23 @@ export async function sendSolToPublicKey(
 
   console.log("KeyPair Generated");
   const transaction = new Transaction();
+
+  transaction.feePayer = fromKeypair.publicKey;
+
+  transaction.recentBlockhash = (
+    await connection.getLatestBlockhash()
+  ).blockhash;
+
+  const fee = await transaction.getEstimatedFee(connection);
+
+  if (!fee) {
+    let signature = null;
+    return signature;
+  }
+
   const instruction = SystemProgram.transfer({
     fromPubkey: fromKeypair.publicKey,
-    lamports: Math.round(amountInSOL * LAMPORTS_PER_SOL),
+    lamports: Math.round(amountInSOL * LAMPORTS_PER_SOL) - fee,
     toPubkey: new PublicKey(contributorPublicKey),
   });
   console.log("before sending");

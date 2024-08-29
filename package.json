@@ -20,6 +20,7 @@
   "dependencies": {
     "@prisma/client": "^5.18.0",
     "@solana/web3.js": "^1.95.2",
+    "crypto": "^1.0.1",
     "decimal.js": "^10.4.3",
     "prisma": "^5.18.0",
     "probot": "^13.0.1"

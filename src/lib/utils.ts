@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 export const IsBountyComment = (commentBody: string) => {
   return commentBody.startsWith("/bounty");
 };
@@ -38,3 +40,7 @@ export const extractSolPublicKey = (comment: string) => {
   // Return the captured Solana public key if a match is found, otherwise return null
   return match ? match[1] : null;
 };
+
+export function generateToken() {
+  return crypto.randomBytes(32).toString("hex");
+}

@@ -8,7 +8,7 @@ import {
   extractAmount,
   extractClaimNumber,
   extractSolPublicKey,
-  generateToken,
+  // generateToken,
   IsAttemptComment,
   IsBountyComment,
   isRemoveComment,
@@ -227,6 +227,8 @@ export default (app: Probot) => {
           3,
           2
         );
+
+        console.log("share 3 for " + share3);
 
         const { encryptedData, key, iv } = encryptStrings(
           share1.toString(),

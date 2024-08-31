@@ -265,6 +265,7 @@ export default (app: Probot) => {
             walletPrivateKeyShard: share2.toString(),
             walletPublicKey: tempWallet.publicKey.toBase58(),
             winnerSub: context.payload.issue.user.id.toString(),
+            status: "PAID",
           },
         });
 

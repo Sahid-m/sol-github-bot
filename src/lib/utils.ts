@@ -44,3 +44,59 @@ export const extractSolPublicKey = (comment: string) => {
 export function generateToken() {
   return crypto.randomBytes(32).toString("hex");
 }
+
+interface EncryptionResult {
+  encryptedData: string;
+  key: string;
+  iv: string;
+}
+
+export function encryptStrings(str1: string, str2: string): EncryptionResult {
+  // Join the strings
+  const data = `${str1}|${str2}`;
+
+  // Generate a random encryption key
+  const key = crypto.randomBytes(32).toString("hex");
+
+  // Generate a random IV
+  const iv = crypto.randomBytes(16);
+
+  // Create cipher
+  const cipher = crypto.createCipheriv(
+    "aes-256-cbc",
+    Buffer.from(key, "hex"),
+    iv
+  );
+
+  // Encrypt the data
+  let encrypted = cipher.update(data, "utf8", "hex");
+  encrypted += cipher.final("hex");
+
+  return {
+    encryptedData: encrypted,
+    key: key,
+    iv: iv.toString("hex"),
+  };
+}
+
+export function decryptStrings(
+  encryptedData: string,
+  key: string,
+  iv: string
+): [string, string] {
+  // Create decipher
+  const decipher = crypto.createDecipheriv(
+    "aes-256-cbc",
+    Buffer.from(key, "hex"),
+    Buffer.from(iv, "hex")
+  );
+
+  // Decrypt the data
+  let decrypted = decipher.update(encryptedData, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+
+  // Split the decrypted string back into two strings
+  const [str1, str2] = decrypted.split("|");
+
+  return [str1, str2];
+}

@@ -23,7 +23,8 @@
     "crypto": "^1.0.1",
     "decimal.js": "^10.4.3",
     "prisma": "^5.18.0",
-    "probot": "^13.0.1"
+    "probot": "^13.0.1",
+    "shamir-secret-sharing": "^0.0.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

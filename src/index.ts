@@ -1,8 +1,10 @@
 import { Keypair } from "@solana/web3.js";
 import { Probot } from "probot";
+import { split } from "shamir-secret-sharing";
 import db from "./db/index.js";
 import { getSolBalanaceInUSD, sendSolToPublicKey } from "./lib/Solutils.js";
 import {
+  encryptStrings,
   extractAmount,
   extractClaimNumber,
   extractSolPublicKey,
@@ -120,7 +122,7 @@ export default (app: Probot) => {
       },
       data: {
         completed: true,
-        winnerId: contributorId,
+        // winnerId: contributorId,
         owner: {
           update: {
             solWallet: {
@@ -216,26 +218,53 @@ export default (app: Probot) => {
       if (IsBountyComment(commentBody)) {
         const bountyAmount = extractAmount(commentBody)?.replace("$", "");
         if (!bountyAmount || !user.solWallet) return;
-        const generatedToken = generateToken();
+        // const generatedToken = generateToken();
 
         const tempWallet = Keypair.generate();
+
+        const [share1, share2, share3] = await split(
+          tempWallet.secretKey,
+          3,
+          2
+        );
+
+        const { encryptedData, key, iv } = encryptStrings(
+          share1.toString(),
+          context.payload.issue.user.id.toString()
+        );
+
         await sendSolToPublicKey(
           user.solWallet.privateKey,
           tempWallet.publicKey.toBase58(),
           parseFloat(bountyAmount)
         );
 
-        const claimLink = `https://localhost:3000/claim/bounty?token=${generatedToken}`;
+        const claimLink = `https://git-sol-bot.vercel.app/claim/bounty?token=${encryptedData}`;
 
-        await db.prBounties.create({
+        // await db.prBounties.create({
+        //   data: {
+        //     bountyAmount: bountyAmount,
+        //     prLink: context.payload.issue.html_url,
+        //     prNumber: context.payload.issue.number.toString(),
+        //     token: generatedToken,
+        //     winnerSub: context.payload.issue.user.id.toString(),
+        //     ownerId: user.id,
+        //     walletPrivateKey: tempWallet.secretKey.toString(),
+        //   },
+        // });
+
+        await db.bountyWinner.create({
           data: {
             bountyAmount: bountyAmount,
+            encryptionIv: iv,
+            encryptionKey: key,
+            name: context.payload.issue.user.login,
             prLink: context.payload.issue.html_url,
             prNumber: context.payload.issue.number.toString(),
-            token: generatedToken,
+            profileImg: context.payload.issue.user.avatar_url,
+            walletPrivateKeyShard: share2.toString(),
+            walletPublicKey: tempWallet.publicKey.toBase58(),
             winnerSub: context.payload.issue.user.id.toString(),
-            ownerId: user.id,
-            walletPrivateKey: tempWallet.secretKey.toString(),
           },
         });
 

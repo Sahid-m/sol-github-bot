@@ -31,17 +31,18 @@ model SolWallet {
 }
 
 model Bounties {
-  id                   String        @id @default(uuid())
-  bountyAmount         String
-  issueName            String
-  ownerId              String
-  issueNumber          String
-  issueId              String
-  issueDescription     String        @default("")
-  completed            Boolean
-  githubRepo           String
-  githubRepoName       String        @default("")
-  winnerId             String?       @default("")
+  id               String        @id @default(uuid())
+  bountyAmount     String
+  issueName        String
+  ownerId          String
+  issueNumber      String
+  issueId          String
+  issueDescription String        @default("")
+  completed        Boolean
+  githubRepo       String
+  githubRepoName   String        @default("")
+  Winner           BountyWinner?
+
   owner                User          @relation(fields: [ownerId], references: [id])
   contributors         Contributor[] @relation("BountyContributors")
   issueLink            String?       @default("")
@@ -70,4 +71,27 @@ model PrBounties {
   prLink           String
   winnerSub        String
   walletPrivateKey String
+}
+
+enum Status {
+  PAID
+  PENDING
+}
+
+model BountyWinner {
+  id                    String    @id @default(uuid())
+  bountyAmount          String
+  bountyId              String?   @unique
+  Bounty                Bounties? @relation(fields: [bountyId], references: [id])
+  prNumber              String
+  prLink                String
+  name                  String
+  winnerSub             String
+  profileImg            String
+  walletPrivateKeyShard String
+  walletPublicKey       String
+  status                Status    @default(PENDING)
+  claimedAt             DateTime?
+  encryptionKey         String
+  encryptionIv          String
 }

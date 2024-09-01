@@ -161,7 +161,7 @@ export default (app: Probot) => {
               ).toString(),
               bountyWinner: {
                 connect: {
-                  bountyId: bountyWinner.id,
+                  id: bountyWinner.id,
                 },
               },
             },

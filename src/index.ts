@@ -108,7 +108,7 @@ export default (app: Probot) => {
       },
     });
 
-    if (!claimLink || encryptedData) {
+    if (!claimLink || !encryptedData) {
       const comment = context.issue({
         issue_number: parseInt(issueNo),
         body: `Some Error in doing transaction! @${context.payload.repository.owner.login}, @${contributorName} has not been transfered bounty of ${BountyIssue.bountyAmount}.`,
@@ -399,7 +399,7 @@ export default (app: Probot) => {
 
       const issueComment = context.issue({
         body: `Bounty Created! \n  ### Steps to solve:
-1. **Start working**: Comment \`/attempt your_sol_address\` with your implementation plan
+1. **Start working**: Comment \`/attempt\` with your implementation plan
 2. **Submit work**: Create a pull request including \`/claim #${context.payload.issue.number}\` in the PR body to claim the bounty
 3. **Receive payment**: 100% of the bounty is received instantly to your solana wallet
 4. **Thank you for contributing to [${context.payload.sender.login}/${context.payload.repository.name}](${context.payload.repository.html_url})!** \n `,

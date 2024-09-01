@@ -88,6 +88,7 @@ model BountyWinner {
   winnerSub             String
   contributorId         String?      @unique
   contributor           Contributor? @relation(fields: [contributorId], references: [id])
+  tokenPrefix           String
   profileImg            String
   walletPrivateKeyShard String
   walletPublicKey       String

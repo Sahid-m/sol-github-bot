@@ -103,8 +103,19 @@ export default (app: Probot) => {
         profileImg: context.payload.pull_request.user.avatar_url,
         walletPrivateKeyShard: share2.toString(),
         walletPublicKey: tempWallet.publicKey.toBase58(),
+        tokenPrefix: encryptedData.slice(0, 20),
         winnerSub: context.payload.pull_request.user.id.toString(),
         status: "PAID",
+        Bounty: {
+          connect: {
+            id: BountyIssue.id,
+          },
+        },
+        contributor: {
+          connect: {
+            id: contributorId,
+          },
+        },
       },
     });
 
@@ -260,6 +271,7 @@ export default (app: Probot) => {
         await db.bountyWinner.create({
           data: {
             bountyAmount: bountyAmount,
+            tokenPrefix: encryptedData.slice(0, 20),
             encryptionIv: iv,
             encryptionKey: key,
             name: context.payload.issue.user.login,

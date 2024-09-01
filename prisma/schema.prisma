@@ -39,7 +39,7 @@ model Bounties {
   issueId          String
   issueDescription String        @default("")
   completed        Boolean
-  githubRepo       String
+  githubRepoId     String
   githubRepoName   String        @default("")
   Winner           BountyWinner?
 
@@ -50,15 +50,14 @@ model Bounties {
 }
 
 model Contributor {
-  id             String     @id @default(uuid())
+  id             String         @id @default(uuid())
   name           String
   profileImg     String
   email          String?
-  sub            String     @unique
-  totalBountyWon String     @default("0")
-  solPublicKey   String
-  bountiesWonId  String[]   @default([])
-  bounties       Bounties[] @relation("BountyContributors")
+  sub            String         @unique
+  totalBountyWon String         @default("0")
+  bountyWinner   BountyWinner[]
+  bounties       Bounties[]     @relation("BountyContributors")
 }
 
 model PrBounties {
@@ -79,18 +78,20 @@ enum Status {
 }
 
 model BountyWinner {
-  id                    String    @id @default(uuid())
+  id                    String       @id @default(uuid())
   bountyAmount          String
-  bountyId              String?   @unique
-  Bounty                Bounties? @relation(fields: [bountyId], references: [id])
+  bountyId              String?      @unique
+  Bounty                Bounties?    @relation(fields: [bountyId], references: [id])
   prNumber              String
   prLink                String
   name                  String
   winnerSub             String
+  contributorId         String?      @unique
+  contributor           Contributor? @relation(fields: [contributorId], references: [id])
   profileImg            String
   walletPrivateKeyShard String
   walletPublicKey       String
-  status                Status    @default(PENDING)
+  status                Status       @default(PAID)
   claimedAt             DateTime?
   encryptionKey         String
   encryptionIv          String

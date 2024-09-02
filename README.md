@@ -1,5 +1,9 @@
 # GitHub Bounty Bot
 
+## Check out the demo video to see the GitHub Bounty Bot in action:
+
+[![Watch the demo video](https://img.youtube.com/vi/0siVmTWFBZM/0.jpg)](https://youtu.be/0siVmTWFBZM)
+
 ## Overview
 
 The GitHub Bounty Bot is an automation tool designed to incentivize open-source contributions by distributing bounties in the form of Solana native tokens. This bot supports two types of bounties:
